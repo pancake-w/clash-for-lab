@@ -391,6 +391,7 @@ _verify_actual_ports() {
 #   external  – proxy points to a non-loopback address (user's own)
 #   poisoned  – proxy points to loopback but mihomo is not running
 #   stale     – mihomo is running but the env var port doesn't match
+#   unbound   – mihomo is running but the recorded proxy port is not listening
 #   healthy   – everything is consistent
 
 _proxy_env_diagnose() {
@@ -418,6 +419,10 @@ _proxy_env_diagnose() {
     esac
     if [ -n "$MIXED_PORT" ] && [ "$port" != "$MIXED_PORT" ]; then
         printf 'stale\n'
+        return 0
+    fi
+    if [ -n "$MIXED_PORT" ] && ! _is_bind "$MIXED_PORT" >/dev/null 2>&1; then
+        printf 'unbound\n'
         return 0
     fi
     printf 'healthy\n'
@@ -1635,6 +1640,10 @@ function clashdoctor() {
         _failcat '⚠️' '代理环境变量: 端口与当前 mihomo 不一致' || true
         issues=$((issues + 1))
         ;;
+    unbound)
+        _failcat '❌' '代理环境变量: 指向的 mihomo 代理端口未监听' || true
+        issues=$((issues + 1))
+        ;;
     external)
         _okcat 'ℹ️' '代理环境变量: 指向非本机代理 (不干预)'
         ;;
@@ -1683,6 +1692,9 @@ function clashdoctor() {
                     _failcat '❌' '无法刷新代理环境变量' || true
                 fi
             fi
+            ;;
+        unbound)
+            _okcat '💡' '代理端口未监听；请执行 clash restart 重建运行配置'
             ;;
         esac
 

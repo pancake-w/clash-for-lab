@@ -1956,6 +1956,10 @@ _resolve_port_conflicts() {
         "$BIN_YQ" -i ".mixed-port = $MIXED_PORT" "$config_file" || return 1
     else
         MIXED_PORT=${mixed_port:-7890}
+        if [ -z "$mixed_port" ]; then
+            "$BIN_YQ" -i ".mixed-port = $MIXED_PORT" "$config_file" || return 1
+            port_changed=true
+        fi
     fi
 
     if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
