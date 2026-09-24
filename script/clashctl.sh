@@ -1123,31 +1123,50 @@ _tunoff() {
     _okcat "Tun 模式已关闭"
 }
 
+_tun_log_has_startup_error() {
+    local log_file=$1
+    [ -f "$log_file" ] || return 1
+    tail -100 "$log_file" 2>/dev/null | grep -Eiq \
+        'Start TUN listening error|level=error.*\[?TUN\]?|TUN.*(operation not permitted|permission denied|failed|error)'
+}
+
+_tun_restore_disabled_after_failure() {
+    local restart_service=${1:-false}
+    _failcat "Tun 接口启动失败，正在恢复关闭状态" || true
+    _apply_mixin_change tun false || {
+        _failcat "Tun 自动恢复失败，请执行 clash tun off" || true
+        return 1
+    }
+    if [ "$restart_service" = true ] && ! is_mihomo_running; then
+        clashon >/dev/null || {
+            _failcat "Tun 已关闭，但无法恢复 Mihomo 服务，请执行 clash on" || true
+            return 1
+        }
+    fi
+}
+
 _tunon() {
+    local was_running=false
     _tunstatus 2>/dev/null && return 0
+    is_mihomo_running && was_running=true
     _apply_mixin_change tun true || {
         _failcat "无法更新 Tun 配置"
         return 1
     }
     sleep 0.5s
 
-    # Check if mihomo is running and tun mode is working
-    if is_mihomo_running; then
-        local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
-        # Check recent log entries for tun mode status
-        if [ -f "$log_file" ]; then
-            # Look for tun-related messages in the last few lines
-            tail -20 "$log_file" 2>/dev/null | grep -i "tun" >/dev/null 2>&1 && {
-                _okcat "Tun 模式已开启"
-            } || {
-                _okcat "Tun 模式已开启 (请检查日志确认状态: $log_file)"
-            }
-        else
-            _okcat "Tun 模式已开启"
-        fi
-    else
-        _failcat "Tun 模式配置已更新，但 mihomo 进程未运行"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    if ! is_mihomo_running; then
+        _failcat "Tun 模式配置已更新，但 mihomo 进程未运行" || true
+        _tun_restore_disabled_after_failure "$was_running"
+        return 1
     fi
+    if _tun_log_has_startup_error "$log_file"; then
+        _tun_restore_disabled_after_failure "$was_running"
+        return 1
+    fi
+
+    _okcat "Tun 模式已开启"
 }
 
 function clashtun() {

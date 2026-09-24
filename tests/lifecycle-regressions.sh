@@ -337,4 +337,44 @@ fi
 [ -L "$MIHOMO_CONFIG_RAW" ] || fail 'update replaced the managed symlink'
 [ ! -s "$trace" ] || fail 'update path preflight acquired the lock or mutated service'
 
+# TUN can fail after Mihomo has otherwise started successfully. The command
+# must not report success or leave the persisted preference enabled when the
+# runtime log says the interface could not be configured.
+reset_fixture
+mkdir -p "$MIHOMO_BASE_DIR/logs"
+printf '%s\n' \
+    'level=error msg="Start TUN listening error: configure tun interface: operation not permitted"' \
+    > "$MIHOMO_BASE_DIR/logs/mihomo.log"
+: > "$trace"
+_tunstatus() { return 1; }
+_apply_mixin_change() {
+    printf 'tun-change:%s:%s\n' "$1" "$2" >> "$trace"
+}
+is_mihomo_running() { return 0; }
+sleep() { :; }
+if _tunon >/dev/null 2>&1; then
+    fail 'TUN runtime failure was reported as success'
+fi
+[ "$(cat "$trace")" = "$(printf '%s\n' 'tun-change:tun:true' 'tun-change:tun:false')" ] ||
+    fail 'TUN runtime failure did not restore the disabled preference'
+
+# Some kernels exit after the TUN error instead of keeping the proxy listener
+# alive. Restore both the disabled preference and the service that was running
+# before the attempted change.
+: > "$trace"
+tun_running_check=0
+is_mihomo_running() {
+    if [ "$tun_running_check" -eq 0 ]; then
+        tun_running_check=1
+        return 0
+    fi
+    return 1
+}
+clashon() { printf '%s\n' tun-restart >> "$trace"; }
+if _tunon >/dev/null 2>&1; then
+    fail 'TUN process exit was reported as success'
+fi
+[ "$(cat "$trace")" = "$(printf '%s\n' 'tun-change:tun:true' 'tun-change:tun:false' 'tun-restart')" ] ||
+    fail 'TUN process exit did not restore the disabled service'
+
 printf '%s\n' 'lifecycle regression tests passed'

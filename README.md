@@ -330,7 +330,11 @@ clash mixin -e
 # 查看运行时配置
 clash mixin -r
 
-# 启用 TUN 模式（暂时还不好用,建议别用）
+# TUN 需要 Mihomo 具备修改网络接口和路由的权限。确认信任当前二进制后，
+# 可以授予最小能力；内核升级替换二进制后需要重新执行 setcap。
+sudo setcap cap_net_admin=+ep "$HOME/tools/mihomo/bin/mihomo"
+
+# 启用 TUN 模式。若接口启动失败，命令会恢复为关闭状态并返回失败。
 clash tun on
 ```
 
